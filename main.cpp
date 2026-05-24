@@ -14,7 +14,6 @@ struct Pixel {
 };
 
 void generarMandelbrot(std::vector<std::vector<Pixel>>& imagen) {
-    // AQUI ESTÁ EL CAMBIO: Scheduler dinámico con tamaño de bloque de 64
     #pragma omp parallel for schedule(dynamic, 64)
     for (int y = 0; y < HEIGHT; ++y) {
         for (int x = 0; x < WIDTH; ++x) {
@@ -75,6 +74,37 @@ void aplicarFiltroConvolucion(const std::vector<std::vector<Pixel>>& origen, std
     }
 }
 
+// NUEVA FUNCIÓN: Histograma evitando False Sharing
+void calcularHistograma(const std::vector<std::vector<Pixel>>& imagen, long long histR[256], long long histG[256], long long histB[256]) {
+    #pragma omp parallel
+    {
+        // 1. Cada hilo crea sus variables estrictamente locales para no chocar con otros hilos
+        long long local_histR[256] = {0};
+        long long local_histG[256] = {0};
+        long long local_histB[256] = {0};
+
+        // 2. Se reparten la imagen y cuentan en sus arreglos privados
+        #pragma omp for nowait
+        for (int y = 0; y < HEIGHT; ++y) {
+            for (int x = 0; x < WIDTH; ++x) {
+                local_histR[imagen[y][x].r]++;
+                local_histG[imagen[y][x].g]++;
+                local_histB[imagen[y][x].b]++;
+            }
+        }
+
+        // 3. Al final, suman lo que contaron al arreglo global de forma sincronizada y segura
+        #pragma omp critical
+        {
+            for(int i = 0; i < 256; ++i) {
+                histR[i] += local_histR[i];
+                histG[i] += local_histG[i];
+                histB[i] += local_histB[i];
+            }
+        }
+    }
+}
+
 void guardarImagenPPM(const std::string& nombreArchivo, const std::vector<std::vector<Pixel>>& imagen) {
     std::ofstream archivo(nombreArchivo, std::ios::binary);
     archivo << "P6\n" << WIDTH << " " << HEIGHT << "\n255\n";
@@ -87,17 +117,24 @@ int main() {
     auto imagenBase = std::vector<std::vector<Pixel>>(HEIGHT, std::vector<Pixel>(WIDTH));
     auto imagenFiltrada = std::vector<std::vector<Pixel>>(HEIGHT, std::vector<Pixel>(WIDTH));
 
-    std::cout << "Iniciando procesamiento con Scheduler Dinámico..." << std::endl;
+    long long histR[256] = {0}, histG[256] = {0}, histB[256] = {0};
+
+    std::cout << "Iniciando procesamiento con Histograma sin False Sharing..." << std::endl;
 
     auto inicio = std::chrono::high_resolution_clock::now();
 
     generarMandelbrot(imagenBase);
     aplicarFiltroConvolucion(imagenBase, imagenFiltrada);
+    calcularHistograma(imagenFiltrada, histR, histG, histB);
 
     auto fin = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> tiempo = fin - inicio;
 
     std::cout << "Tiempo de ejecucion: " << tiempo.count() << " segundos." << std::endl;
+    
+    // Solo imprimimos un par de valores del histograma para comprobar que funcionó
+    std::cout << "Pixeles con Rojo puro (255): " << histR[255] << std::endl;
+    std::cout << "Pixeles negros (Fondo): " << histR[0] << std::endl;
 
     guardarImagenPPM("mandelbrot_8k_filtrado_omp.ppm", imagenFiltrada);
     
