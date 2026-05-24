@@ -3,22 +3,21 @@
 #include <cmath>
 #include <chrono>
 #include <fstream>
+#include <omp.h> // Librería de OpenMP añadida
 
-// Configuración de Ultra-Alta Resolución (8K UHD)
 const int WIDTH = 7680;
 const int HEIGHT = 4320;
 const int MAX_ITER = 500;
 
-// Estructura para manejar los canales de color RGB de un píxel
 struct Pixel {
     unsigned char r, g, b;
 };
 
-// Tarea A: Generación del Conjunto de Mandelbrot (Secuencial)
 void generarMandelbrot(std::vector<std::vector<Pixel>>& imagen) {
+    // Directiva básica de OpenMP para paralelizar el bucle exterior
+    #pragma omp parallel for
     for (int y = 0; y < HEIGHT; ++y) {
         for (int x = 0; x < WIDTH; ++x) {
-            // Mapear las coordenadas del píxel al plano complejo (-2.0 a 1.0, -1.2 a 1.2)
             double cr = -2.0 + (x * 3.0 / WIDTH);
             double ci = -1.2 + (y * 2.4 / HEIGHT);
 
@@ -32,9 +31,8 @@ void generarMandelbrot(std::vector<std::vector<Pixel>>& imagen) {
                 iter++;
             }
 
-            // Coloreado simple basado en las iteraciones
             if (iter == MAX_ITER) {
-                imagen[y][x] = {0, 0, 0}; // Fondo negro
+                imagen[y][x] = {0, 0, 0};
             } else {
                 unsigned char c = static_cast<unsigned char>((iter * 255) / MAX_ITER);
                 imagen[y][x] = {static_cast<unsigned char>(c * 3), static_cast<unsigned char>(c * 5), static_cast<unsigned char>(c * 7)};
@@ -43,9 +41,7 @@ void generarMandelbrot(std::vector<std::vector<Pixel>>& imagen) {
     }
 }
 
-// Tarea B: Aplicar filtro de convolución Gaussiano pesado (Secuencial)
 void aplicarFiltroConvolucion(const std::vector<std::vector<Pixel>>& origen, std::vector<std::vector<Pixel>>& destino) {
-    // Matriz de desenfoque Gaussiano 5x5 extendida (pesada para simular carga)
     const int K_SIZE = 5;
     float kernel[K_SIZE][K_SIZE] = {
         {1/273.0f, 4/273.0f,  7/273.0f,  4/273.0f,  1/273.0f},
@@ -56,11 +52,12 @@ void aplicarFiltroConvolucion(const std::vector<std::vector<Pixel>>& origen, std
     };
     int offset = K_SIZE / 2;
 
+    // Directiva básica de OpenMP para paralelizar el filtro
+    #pragma omp parallel for
     for (int y = offset; y < HEIGHT - offset; ++y) {
         for (int x = offset; x < WIDTH - offset; ++x) {
             float red = 0.0f, green = 0.0f, blue = 0.0f;
 
-            // Multiplicación por la vecindad del Kernel
             for (int ky = 0; ky < K_SIZE; ++ky) {
                 for (int kx = 0; kx < K_SIZE; ++kx) {
                     int px = x + kx - offset;
@@ -79,7 +76,6 @@ void aplicarFiltroConvolucion(const std::vector<std::vector<Pixel>>& origen, std
     }
 }
 
-// Función auxiliar para exportar la imagen final
 void guardarImagenPPM(const std::string& nombreArchivo, const std::vector<std::vector<Pixel>>& imagen) {
     std::ofstream archivo(nombreArchivo, std::ios::binary);
     archivo << "P6\n" << WIDTH << " " << HEIGHT << "\n255\n";
@@ -89,11 +85,10 @@ void guardarImagenPPM(const std::string& nombreArchivo, const std::vector<std::v
 }
 
 int main() {
-    // Reserva de memoria dinámica para evitar desbordamiento de pila en 8K
     auto imagenBase = std::vector<std::vector<Pixel>>(HEIGHT, std::vector<Pixel>(WIDTH));
     auto imagenFiltrada = std::vector<std::vector<Pixel>>(HEIGHT, std::vector<Pixel>(WIDTH));
 
-    std::cout << "Iniciando procesamiento secuencial (8K)..." << std::endl;
+    std::cout << "Iniciando procesamiento paralelo con OpenMP (Línea Base)..." << std::endl;
 
     auto inicio = std::chrono::high_resolution_clock::now();
 
@@ -103,9 +98,9 @@ int main() {
     auto fin = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> tiempo = fin - inicio;
 
-    std::cout << "Tiempo de ejecucion secuencial: " << tiempo.count() << " segundos." << std::endl;
+    std::cout << "Tiempo de ejecucion paralelo: " << tiempo.count() << " segundos." << std::endl;
 
-    guardarImagenPPM("mandelbrot_8k_filtrado.ppm", imagenFiltrada);
+    guardarImagenPPM("mandelbrot_8k_filtrado_omp.ppm", imagenFiltrada);
     std::cout << "Imagen guardada exitosamente." << std::endl;
 
     return 0;
