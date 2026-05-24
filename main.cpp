@@ -57,6 +57,8 @@ void aplicarFiltroConvolucion(const std::vector<std::vector<Pixel>>& origen, std
             float red = 0.0f, green = 0.0f, blue = 0.0f;
 
             for (int ky = 0; ky < K_SIZE; ++ky) {
+                // AQUÍ ESTÁ EL CAMBIO PARA LOS PUNTOS EXTRA: Vectorización SPMD
+                #pragma omp simd reduction(+:red, green, blue)
                 for (int kx = 0; kx < K_SIZE; ++kx) {
                     int px = x + kx - offset;
                     int py = y + ky - offset;
@@ -74,16 +76,13 @@ void aplicarFiltroConvolucion(const std::vector<std::vector<Pixel>>& origen, std
     }
 }
 
-// NUEVA FUNCIÓN: Histograma evitando False Sharing
 void calcularHistograma(const std::vector<std::vector<Pixel>>& imagen, long long histR[256], long long histG[256], long long histB[256]) {
     #pragma omp parallel
     {
-        // 1. Cada hilo crea sus variables estrictamente locales para no chocar con otros hilos
         long long local_histR[256] = {0};
         long long local_histG[256] = {0};
         long long local_histB[256] = {0};
 
-        // 2. Se reparten la imagen y cuentan en sus arreglos privados
         #pragma omp for nowait
         for (int y = 0; y < HEIGHT; ++y) {
             for (int x = 0; x < WIDTH; ++x) {
@@ -93,7 +92,6 @@ void calcularHistograma(const std::vector<std::vector<Pixel>>& imagen, long long
             }
         }
 
-        // 3. Al final, suman lo que contaron al arreglo global de forma sincronizada y segura
         #pragma omp critical
         {
             for(int i = 0; i < 256; ++i) {
@@ -119,7 +117,7 @@ int main() {
 
     long long histR[256] = {0}, histG[256] = {0}, histB[256] = {0};
 
-    std::cout << "Iniciando procesamiento con Histograma sin False Sharing..." << std::endl;
+    std::cout << "Iniciando procesamiento Final (SPMD Vectorizado)..." << std::endl;
 
     auto inicio = std::chrono::high_resolution_clock::now();
 
@@ -131,10 +129,6 @@ int main() {
     std::chrono::duration<double> tiempo = fin - inicio;
 
     std::cout << "Tiempo de ejecucion: " << tiempo.count() << " segundos." << std::endl;
-    
-    // Solo imprimimos un par de valores del histograma para comprobar que funcionó
-    std::cout << "Pixeles con Rojo puro (255): " << histR[255] << std::endl;
-    std::cout << "Pixeles negros (Fondo): " << histR[0] << std::endl;
 
     guardarImagenPPM("mandelbrot_8k_filtrado_omp.ppm", imagenFiltrada);
     
