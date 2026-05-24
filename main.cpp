@@ -3,7 +3,7 @@
 #include <cmath>
 #include <chrono>
 #include <fstream>
-#include <omp.h> // Librería de OpenMP añadida
+#include <omp.h>
 
 const int WIDTH = 7680;
 const int HEIGHT = 4320;
@@ -14,8 +14,8 @@ struct Pixel {
 };
 
 void generarMandelbrot(std::vector<std::vector<Pixel>>& imagen) {
-    // Directiva básica de OpenMP para paralelizar el bucle exterior
-    #pragma omp parallel for
+    // AQUI ESTÁ EL CAMBIO: Scheduler dinámico con tamaño de bloque de 64
+    #pragma omp parallel for schedule(dynamic, 64)
     for (int y = 0; y < HEIGHT; ++y) {
         for (int x = 0; x < WIDTH; ++x) {
             double cr = -2.0 + (x * 3.0 / WIDTH);
@@ -52,7 +52,6 @@ void aplicarFiltroConvolucion(const std::vector<std::vector<Pixel>>& origen, std
     };
     int offset = K_SIZE / 2;
 
-    // Directiva básica de OpenMP para paralelizar el filtro
     #pragma omp parallel for
     for (int y = offset; y < HEIGHT - offset; ++y) {
         for (int x = offset; x < WIDTH - offset; ++x) {
@@ -88,7 +87,7 @@ int main() {
     auto imagenBase = std::vector<std::vector<Pixel>>(HEIGHT, std::vector<Pixel>(WIDTH));
     auto imagenFiltrada = std::vector<std::vector<Pixel>>(HEIGHT, std::vector<Pixel>(WIDTH));
 
-    std::cout << "Iniciando procesamiento paralelo con OpenMP (Línea Base)..." << std::endl;
+    std::cout << "Iniciando procesamiento con Scheduler Dinámico..." << std::endl;
 
     auto inicio = std::chrono::high_resolution_clock::now();
 
@@ -98,10 +97,9 @@ int main() {
     auto fin = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> tiempo = fin - inicio;
 
-    std::cout << "Tiempo de ejecucion paralelo: " << tiempo.count() << " segundos." << std::endl;
+    std::cout << "Tiempo de ejecucion: " << tiempo.count() << " segundos." << std::endl;
 
     guardarImagenPPM("mandelbrot_8k_filtrado_omp.ppm", imagenFiltrada);
-    std::cout << "Imagen guardada exitosamente." << std::endl;
-
+    
     return 0;
 }
